@@ -1,0 +1,78 @@
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: iceberg-mssql
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d
+      - mssql-data:/var/opt/mssql
+    networks:
+      - iceberg-network
+    command: ["/docker-entrypoint-initdb.d/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${MSSQL_SA_PASSWORD:-Strong@Password123}", "-d", "IcebergDemoSource", "-Q", "SELECT COUNT(*) FROM sales.customers", "-C"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: iceberg-nessie
+    ports:
+      - "19120:19120"
+    environment:
+      - NESSIE_VERSION_STORE_TYPE=in-memory
+      - QUARKUS_HTTP_PORT=19120
+      - NESSIE_URI=http://nessie:19120/api/v1
+      # Iceberg REST Catalog configuration
+      - NESSIE_CATALOG_DEFAULT-WAREHOUSE=warehouse
+      - NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION=file:///data/warehouse
+      - NESSIE_CATALOG_ICEBERG_ENABLED=true
+    volumes:
+      - ./data/nessie:/nessie/data
+      - ./data/warehouse:/data/warehouse
+    networks:
+      - iceberg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/trees"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  pyiceberg-etl:
+    build: ./pyiceberg-etl
+    container_name: iceberg-etl
+    depends_on:
+      mssql:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+    environment:
+      - MSSQL_HOST=mssql
+      - MSSQL_PORT=1433
+      - MSSQL_USER=sa
+      - MSSQL_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - NESSIE_URI=http://nessie:19120/api/v1
+      - WAREHOUSE_PATH=/data/warehouse
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/warehouse:/data/warehouse
+      - ./pyiceberg-etl:/app
+    networks:
+      - iceberg-network
+    command: tail -f /dev/null  # Keep container running for manual execution
+
+networks:
+  iceberg-network:
+    driver: bridge
+
+volumes:
+  mssql-data:
