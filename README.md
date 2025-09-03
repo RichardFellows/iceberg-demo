@@ -1,195 +1,178 @@
 # Apache Iceberg Demo with SQL Server Integration
 
-A comprehensive demonstration of using Apache Iceberg as an intermediate storage layer for SQL Server data, featuring bidirectional data flow, schema evolution management via Nessie, and zero-precision-loss data migration using Apache Arrow.
+A comprehensive demonstration of using Apache Iceberg as an intermediate storage layer for SQL Server data, featuring bidirectional data flow, schema evolution management via Nessie, S3-compatible storage with MinIO, and a modern web dashboard for interactive operations.
 
-## Overview
+## 🚀 Key Features
 
-This demo showcases:
-- **SQL Server → Iceberg ETL**: Migrate SQL Server tables to Iceberg format with full type fidelity
-- **Iceberg → SQL Server Backload**: Restore Iceberg data back to SQL Server
-- **Schema Evolution**: Track and manage schema changes using Nessie catalog
-- **Type Preservation**: Zero-loss precision using Apache Arrow as intermediate format
-- **Filesystem Storage**: Direct Parquet file storage on host filesystem (S3-compatible ready)
+- **Enterprise-Grade MinIO**: Source-built from UBI8 base image with zero external dependencies
+- **Interactive Web Dashboard**: Real-time monitoring and one-click ETL operations
+- **Bidirectional Data Flow**: SQL Server ↔ Apache Iceberg with full type preservation
+- **S3-Compatible Storage**: Production-ready MinIO implementation
+- **Schema Evolution**: Track and manage changes using Nessie catalog
+- **Zero-Loss Precision**: Apache Arrow ensures perfect type fidelity
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   SQL Server    │────▶│  PyIceberg   │────▶│ Iceberg Tables  │
-│   (Source DB)   │     │   ETL/Arrow  │     │  (Parquet)      │
-└─────────────────┘     └──────────────┘     └─────────────────┘
-                              │                       │
-                              │                       │
-                              ▼                       ▼
-                        ┌──────────────┐     ┌─────────────────┐
-                        │    Nessie    │     │  Host Filesystem│
-                        │   Catalog    │     │  (Bind Mount)   │
-                        └──────────────┘     └─────────────────┘
-                              │                       │
-                              │                       │
-                              ▼                       ▼
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   SQL Server    │◀────│  PyIceberg   │◀────│ Iceberg Tables  │
-│   (Target DB)   │     │   Backload   │     │   (Parquet)     │
-└─────────────────┘     └──────────────┘     └─────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     Web Dashboard (Port 8000)                    │
+│          Real-time Monitoring & Interactive Controls             │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │ FastAPI + WebSocket
+┌────────────────────────────┼─────────────────────────────────────┐
+│                            ▼                                     │
+│  ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐  │
+│  │   SQL Server    │────▶│  PyIceberg   │────▶│    MinIO     │  │
+│  │   (Source DB)   │     │   ETL/Arrow  │     │  S3 Storage  │  │
+│  │    18.5K rows   │     │    0.9.1     │     │ Source-Built │  │
+│  └─────────────────┘     └──────────────┘     └──────────────┘  │
+│         │                       │                      │         │
+│         │                       │ REST API             ▼         │
+│         │                 ┌──────────────┐     ┌──────────────┐ │
+│         │                 │    Nessie    │────▶│   Iceberg    │ │
+│         │                 │ REST Catalog │     │    Tables    │ │
+│         │                 │  Git-like    │     │  (Parquet)   │ │
+│         │                 └──────────────┘     └──────────────┘ │
+│         │                       │                      │         │
+│         ▼                       ▼                      ▼         │
+│  ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐  │
+│  │   SQL Server    │◀────│  PyIceberg   │◀────│   Iceberg    │  │
+│  │   (Target DB)   │     │   Backload   │     │    Tables    │  │
+│  │  Restored Data  │     │   Script     │     │  Partitioned │  │
+│  └─────────────────┘     └──────────────┘     └──────────────┘  │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ## Components
 
-- **MS SQL Server 2022**: Source and target databases with realistic test data
+### Core Services
+- **MS SQL Server 2022**: Source and target databases with 18,500 rows of test data
 - **Nessie**: Git-like catalog for Iceberg table metadata and version control
-- **PyIceberg**: Python library for Iceberg table operations
+- **MinIO**: S3-compatible object storage (source-built from UBI8)
+- **PyIceberg 0.9.1**: Latest Python library for Iceberg operations
+- **Web Dashboard**: FastAPI-based interactive control panel
+
+### Special Features
+- **Source-Built MinIO**: Compiled from Go source using Red Hat UBI8 base
 - **Apache Arrow**: Ensures type-safe, zero-loss data conversion
-- **Docker Compose**: Orchestrates all services
+- **Docker Compose**: Full orchestration with health checks
 
 ## Quick Start
 
 ### Prerequisites
 - Docker and Docker Compose installed
 - At least 4GB free RAM and 2GB free disk space
-- Port availability: 1433 (SQL Server), 19120 (Nessie)
-- Git (to clone the demo)
+- Ports available: 
+  - 1433 (SQL Server)
+  - 8000 (Web Dashboard)
+  - 9000-9001 (MinIO)
+  - 19120 (Nessie)
 
-### Complete Setup Steps
+### 🎯 Option 1: Web Dashboard (Recommended)
 
-#### Step 1: Start the Services
+The interactive dashboard provides real-time monitoring and one-click operations for the complete Apache Iceberg pipeline.
+
+#### Step 1: Start All Services
 
 ```bash
-# Clone or navigate to the project directory
+# Clone the repository
+git clone <repository-url>
 cd iceberg-demo
 
-# Start all services
+# Start all services including dashboard
 docker-compose up -d --build
 
-# Check container status (all should be running)
+# Wait for services to be healthy (about 90 seconds)
 docker-compose ps
 
-# Expected output:
-# NAME             STATUS
-# iceberg-mssql    Up (healthy)
-# iceberg-nessie   Up (healthy)  
-# iceberg-etl      Up
-
-# Monitor logs to ensure services are ready
-docker-compose logs -f
+# Expected output - all services should be healthy:
+# NAME               STATUS
+# iceberg-dashboard  Up (healthy)
+# iceberg-minio      Up (healthy)  
+# iceberg-mssql      Up (healthy)
+# iceberg-nessie     Up (healthy)
+# iceberg-etl        Up
 ```
 
-**Wait for SQL Server to fully initialize** (look for "SQL Server is now ready for client connections" in logs).
+#### Step 2: Access the Web Dashboard
 
-#### Step 2: Wait for Automatic Database Initialization
+Open your browser and navigate to:
 
-The SQL Server container **automatically initializes** the demo databases on startup using a custom entrypoint script:
+```
+http://localhost:8000
+```
+
+The **FastAPI-powered dashboard** provides:
+
+##### 🎛️ System Status Panel
+- **Real-time Health Monitoring**: Live status for SQL Server, Nessie, MinIO
+- **Connection Status**: Verify all service connectivity
+- **Auto-refresh**: Updates every 30 seconds automatically
+
+##### ⚡ ETL Controls
+- **One-click ETL Pipeline**: Migrate SQL Server → Apache Iceberg
+- **One-click Backload**: Restore Iceberg → SQL Server  
+- **Progress Tracking**: Real-time progress bars and percentages
+- **Streaming Logs**: Live terminal-style operation logs
+
+##### 🗂️ Catalog Browser
+- **Nessie Tables**: View all Iceberg tables and metadata
+- **SQL Server Tables**: Monitor source/target databases
+- **Row Counts**: Real-time data metrics and statistics
+- **Last Sync Times**: Track operation timestamps
+
+#### Step 3: Run ETL via Dashboard
+
+1. **Check System Status**: Ensure all services show green/healthy status
+2. **Click "▶️ Run ETL Pipeline"**: Start SQL Server → Iceberg migration
+3. **Monitor Progress**: Watch live progress bar (0-100%)
+4. **View Logs**: Real-time streaming logs show detailed operations
+5. **Verify Results**: Check Nessie Catalog Browser for 5 new tables
+
+**Expected Results**: 18,500 rows migrated across 5 partitioned tables
+
+#### Step 4: Run Backload via Dashboard
+
+1. **Ensure ETL Completed**: First run ETL to populate Iceberg tables
+2. **Click "◀️ Run Backload"**: Start Iceberg → SQL Server restoration  
+3. **Monitor Progress**: Track backload operation in log viewer
+4. **Verify Results**: Check SQL Server Tables panel for restored data
+
+**Expected Results**: All data restored to `*_backload` tables in target database
+
+### 🔧 Option 2: Command Line Interface
+
+#### Step 1: Initialize MinIO Storage
 
 ```bash
-# Monitor the initialization process (optional)
-docker-compose logs mssql --follow
+# Create warehouse bucket in MinIO
+./init-minio.sh
 
-# Look for these key messages:
-# "Waiting for SQL Server to start..."
-# "SQL Server is ready, running initialization script..."
-# "Database initialization completed successfully!"
+# Or manually:
+docker exec iceberg-minio mc alias set local http://localhost:9000 minioadmin minioadmin123
+docker exec iceberg-minio mc mb local/warehouse --ignore-existing
 ```
 
-**The automatic setup creates:**
-- **Source database**: `IcebergDemoSource` with test data (18,500 rows across 5 tables)
-- **Target database**: `IcebergDemoTarget` with empty schema  
-- **Test tables** with diverse SQL Server data types (DECIMAL, DATETIME2, MONEY, NVARCHAR, VARBINARY, etc.)
-
-**Verify initialization completed successfully:**
-```bash
-# Check container health (should show 'healthy' after ~90 seconds)
-docker-compose ps mssql
-
-# Verify test data was loaded
-docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P 'Strong@Password123' \
-  -d IcebergDemoSource \
-  -Q "SELECT 
-    'customers' as table_name, COUNT(*) as row_count FROM sales.customers
-    UNION ALL
-    SELECT 'products', COUNT(*) FROM sales.products
-    UNION ALL  
-    SELECT 'transactions', COUNT(*) FROM sales.transactions
-    UNION ALL
-    SELECT 'order_details', COUNT(*) FROM sales.order_details
-    UNION ALL
-    SELECT 'inventory_snapshots', COUNT(*) FROM sales.inventory_snapshots" -C
-```
-
-**Expected output:**
-```
-table_name              row_count
-customers               1000
-products                500
-transactions            10000
-order_details           5000
-inventory_snapshots     2000
-```
-
-#### Step 3: Run ETL (SQL Server → Iceberg)
+#### Step 2: Run ETL Manually
 
 ```bash
 # Execute the ETL script
 docker-compose exec pyiceberg-etl python etl_script.py
+
+# Expected output:
+# INFO: Starting SQL Server to Iceberg migration
+# INFO: Successfully connected to SQL Server
+# INFO: Successfully initialized Nessie REST catalog at http://nessie:19120/iceberg
+# INFO: Created 'sales' namespace in Iceberg catalog
+# ✓ sales.customers: 1000 rows
+# ✓ sales.products: 500 rows [partitioned by category]
+# ✓ sales.transactions: 10000 rows [partitioned by transaction_date]
+# ✓ sales.order_details: 5000 rows
+# ✓ sales.inventory_snapshots: 2000 rows [partitioned by snapshot_date, warehouse_id]
+# Total: 18500 rows migrated
 ```
 
-This will:
-- Connect to SQL Server source database
-- Read all tables with schema preservation using Apache Arrow
-- Convert SQL Server types with zero precision loss
-- Create Iceberg tables with filesystem catalog (Nessie fallback available)
-- Write partitioned Parquet files to `/data/warehouse`
-- Apply partitioning based on date fields and categories
-
-**Expected output:**
-```
-INFO:__main__:Starting SQL Server to Iceberg migration
-INFO:__main__:Successfully connected to SQL Server
-WARNING:__main__:Nessie REST catalog not available, using filesystem catalog
-INFO:__main__:Successfully initialized filesystem catalog at /data/warehouse
-INFO:__main__:Note: Using filesystem catalog. For production with versioning, configure Nessie REST properly.
-INFO:__main__:Reading data from sales.customers
-INFO:__main__:Successfully read 1000 rows from sales.customers
-INFO:__main__:Created Iceberg table sales.customers
-INFO:__main__:Written 1000 rows to /data/warehouse/sales/customers/data/part-00000-*.parquet
-...
-==================================================
-Migration Summary:
-==================================================
-✓ sales.customers: 1000 rows (0.07s)
-✓ sales.products: 500 rows (0.04s) [partitioned by category]
-✓ sales.transactions: 10000 rows (0.35s) [partitioned by transaction_date]
-✓ sales.order_details: 5000 rows (0.06s)
-✓ sales.inventory_snapshots: 2000 rows (0.03s) [partitioned by snapshot_date, warehouse_id]
-
-Total: 18500 rows migrated in 0.55 seconds
-```
-
-#### Step 4: Verify Iceberg Data
-
-```bash
-# Check the Parquet files created on host filesystem
-ls -la data/warehouse/sales/
-
-# Example output:
-# drwxr-xr-x customers/
-# drwxr-xr-x products/ 
-# drwxr-xr-x transactions/
-# drwxr-xr-x order_details/
-# drwxr-xr-x inventory_snapshots/
-
-# View specific table data directory
-ls -la data/warehouse/sales/customers/data/
-# part-00000-20250903_212540.parquet
-
-# Check Nessie catalog health (runs in background for future integration)
-curl http://localhost:19120/api/v1/trees
-
-# Verify Iceberg metadata (SQLite catalog used)
-docker-compose exec pyiceberg-etl ls -la /tmp/pyiceberg_catalog.db
-```
-
-#### Step 5: Run Backload (Iceberg → SQL Server)
+#### Step 3: Run Backload Manually
 
 ```bash
 # Backload all tables to target database
@@ -199,193 +182,178 @@ docker-compose exec pyiceberg-etl python backload_script.py
 docker-compose exec pyiceberg-etl python backload_script.py --tables customers products
 ```
 
-This will:
-- Read Iceberg tables from filesystem
-- Convert Arrow schemas back to SQL types
-- Create target tables with `_backload` suffix
-- Bulk insert data with validation
-- Verify row counts and data integrity
+## 🏗️ Enterprise MinIO Implementation
 
-#### Step 6: Verify Backloaded Data
+This demo includes a **source-built MinIO** implementation that eliminates all external binary dependencies:
+
+### Features
+- **Built from Source**: MinIO compiled from official GitHub repositories
+- **UBI8 Base Image**: Red Hat Universal Base Image for enterprise compliance
+- **Zero External Dependencies**: No binary downloads or docker.io dependencies
+- **Multi-Stage Build**: Efficient Docker pattern with separate build/runtime stages
+
+### Building Custom MinIO
 
 ```bash
-# Connect to SQL Server and check the backloaded tables
-docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P 'Strong@Password123' \
-  -d IcebergDemoTarget \
-  -Q "SELECT COUNT(*) FROM sales.customers_backload" -C
+# The MinIO image is automatically built as part of docker-compose
+cd minio/
+docker build -t source-built-minio:latest .
 
-# Check all backloaded table counts
-docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P 'Strong@Password123' \
-  -d IcebergDemoTarget \
-  -Q "SELECT 
-    'customers_backload' as table_name, COUNT(*) as row_count FROM sales.customers_backload
-    UNION ALL
-    SELECT 'products_backload', COUNT(*) FROM sales.products_backload
-    UNION ALL
-    SELECT 'transactions_backload', COUNT(*) FROM sales.transactions_backload
-    UNION ALL
-    SELECT 'order_details_backload', COUNT(*) FROM sales.order_details_backload
-    UNION ALL
-    SELECT 'inventory_snapshots_backload', COUNT(*) FROM sales.inventory_snapshots_backload" -C
-
-# Compare a sample of data for verification
-docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P 'Strong@Password123' \
-  -d IcebergDemoTarget \
-  -Q "SELECT TOP 5 customer_code, first_name, credit_limit FROM sales.customers_backload" -C
+# Verify source build
+docker run --rm source-built-minio:latest /usr/local/bin/minio --version
+# Output: minio version DEVELOPMENT.2025-08-29... (indicates source build)
 ```
 
 ## Type Mapping
 
-The system ensures perfect type fidelity through Arrow:
+Perfect type fidelity through Apache Arrow:
 
-| SQL Server | Arrow | Iceberg | Notes |
-|------------|-------|---------|-------|
-| DECIMAL(p,s) | Decimal128(p,s) | decimal(p,s) | Full precision preserved |
-| DATETIME2(7) | Timestamp[ns] | timestamptz | Nanosecond precision |
-| MONEY | Decimal128(19,4) | decimal(19,4) | Exact monetary values |
-| NVARCHAR | String (UTF-8) | string | Unicode support |
-| VARBINARY | Binary | binary | Binary data preserved |
+| SQL Server | Arrow | Iceberg | MinIO Storage |
+|------------|-------|---------|---------------|
+| DECIMAL(p,s) | Decimal128(p,s) | decimal(p,s) | Parquet in S3 |
+| DATETIME2(7) | Timestamp[ns] | timestamptz | Partitioned by date |
+| MONEY | Decimal128(19,4) | decimal(19,4) | Exact values |
+| NVARCHAR | String (UTF-8) | string | UTF-8 encoded |
+| VARBINARY | Binary | binary | Binary preserved |
 | BIT | Bool | boolean | Boolean values |
 
-## Schema Evolution Examples
+## Data Verification
 
-```python
-# The system handles schema evolution scenarios:
-# 1. Adding columns (with defaults)
-# 2. Type widening (INT → BIGINT)
-# 3. Nullable changes
-# 4. Column drops (configurable)
+### Check MinIO Storage
+
+```bash
+# List buckets
+docker exec iceberg-minio mc ls local/
+
+# Browse warehouse data
+docker exec iceberg-minio mc ls local/warehouse/
+
+# Access MinIO Console
+# URL: http://localhost:9001
+# Credentials: minioadmin / minioadmin123
 ```
 
-## File Structure
+### Verify SQL Server Data
 
-```
-data/
-├── warehouse/              # Iceberg table storage
-│   └── sales/
-│       ├── customers/
-│       │   └── data/      # Parquet files
-│       ├── products/
-│       └── transactions/
-└── nessie/                # Nessie catalog metadata
-```
+```bash
+# Check source data counts
+docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
+  -S localhost -U sa -P 'Strong@Password123' \
+  -d IcebergDemoSource \
+  -Q "SELECT 
+    'Total Rows' as Metric, 
+    SUM(row_count) as Value 
+    FROM (
+      SELECT COUNT(*) as row_count FROM sales.customers
+      UNION ALL SELECT COUNT(*) FROM sales.products
+      UNION ALL SELECT COUNT(*) FROM sales.transactions
+      UNION ALL SELECT COUNT(*) FROM sales.order_details
+      UNION ALL SELECT COUNT(*) FROM sales.inventory_snapshots
+    ) t" -C
 
-## Advanced Usage
-
-### Custom Table Selection
-
-```python
-# ETL specific tables
-docker-compose exec pyiceberg-etl python -c "
-from etl_script import SQLServerToIcebergETL
-etl = SQLServerToIcebergETL()
-etl.connect_mssql()
-etl.initialize_catalog()
-etl.migrate_table('sales', 'customers', partition_by=['customer_segment'])
-"
+# Check backloaded data
+docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
+  -S localhost -U sa -P 'Strong@Password123' \
+  -d IcebergDemoTarget \
+  -Q "SELECT COUNT(*) FROM sales.customers_backload" -C
 ```
 
-### Point-in-Time Recovery
+### Check Nessie Catalog
 
-```python
-# Backload from specific Nessie branch/tag
-# (Feature to be implemented with Nessie branching)
+```bash
+# API health check
+curl http://localhost:19120/api/v1/trees
+
+# View commits (if using Nessie REST catalog)
+curl http://localhost:19120/api/v1/trees/tree/main/history
 ```
+
+## 📊 Dashboard Features
+
+### System Monitoring
+- **Service Health**: Real-time status for SQL Server, Nessie, MinIO
+- **Data Metrics**: Row counts, table statistics, sync timestamps
+- **Auto-refresh**: Updates every 30 seconds
+
+### ETL Operations
+- **One-Click ETL**: Migrate data with a single button
+- **One-Click Backload**: Restore data to SQL Server
+- **Progress Tracking**: Real-time progress bars
+- **Live Logs**: Terminal-style operation logs
+
+### Catalog Management
+- **Nessie Browser**: View Iceberg tables and metadata
+- **SQL Tables**: Monitor source and target databases
+- **Commit History**: Browse version control (when fully configured)
+
+## Advanced Configuration
 
 ### Production Deployment
 
 For production use:
 
-1. **Replace filesystem with S3**:
-   - Update `warehouse` path to S3 URI
-   - Configure AWS credentials
+1. **External S3 Storage**:
+```yaml
+# Update docker-compose.yml
+environment:
+  - AWS_ENDPOINT_URL=https://s3.amazonaws.com
+  - AWS_ACCESS_KEY_ID=your-key
+  - AWS_SECRET_ACCESS_KEY=your-secret
+```
 
-2. **Use external Nessie**:
-   - Deploy Nessie with persistent backend
-   - Update `NESSIE_URI` in `.env`
+2. **Persistent Nessie**:
+```yaml
+# Use PostgreSQL backend for Nessie
+environment:
+  - NESSIE_VERSION_STORE_TYPE=JDBC
+  - QUARKUS_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nessie
+```
 
-3. **Scale PyIceberg workers**:
-   - Deploy as Kubernetes jobs
-   - Use Apache Spark for large datasets
-
-4. **Add monitoring**:
-   - Track ETL metrics
-   - Monitor data quality
-   - Alert on failures
+3. **Scale ETL Workers**:
+```yaml
+# Deploy multiple ETL containers
+deploy:
+  replicas: 3
+```
 
 ## Troubleshooting
 
-### SQL Server Connection Issues
+### Dashboard Issues
 ```bash
-# Check SQL Server container status
-docker-compose ps mssql
+# Check dashboard logs
+docker-compose logs dashboard --tail 50
 
-# Test SQL Server connection (note: sqlcmd is in /opt/mssql-tools18/ in 2022 version)
-docker-compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P 'Strong@Password123' -Q "SELECT 1" -C
+# Test API endpoint
+curl http://localhost:8000/api/status
 
-# Check SQL Server logs if connection fails
-docker-compose logs mssql --tail 50
+# Restart dashboard
+docker-compose restart dashboard
 ```
 
-### Nessie Catalog Issues
+### MinIO Issues
 ```bash
-# Check Nessie container status
-docker-compose ps nessie
+# Check MinIO health
+curl http://localhost:9000/minio/health/live
 
-# Check Nessie health (API v1 endpoint)
-curl http://localhost:19120/api/v1/config
+# View MinIO logs
+docker-compose logs minio --tail 20
 
-# Check Nessie logs
-docker-compose logs nessie --tail 20
+# Access MinIO shell
+docker exec -it iceberg-minio sh
 ```
 
-### PyIceberg ETL Issues
+### ETL Failures
 ```bash
-# Check PyIceberg container logs
-docker-compose logs pyiceberg-etl
+# Check ETL container logs
+docker-compose logs pyiceberg-etl --tail 50
 
-# Test database connectivity from ETL container
+# Test database connectivity
 docker-compose exec pyiceberg-etl python -c "
 import pymssql
 conn = pymssql.connect('mssql', 'sa', 'Strong@Password123', 'IcebergDemoSource')
-print('SQL Server connection: OK')
+print('Connected successfully')
 conn.close()
 "
-
-# Verify warehouse directory permissions
-ls -la data/warehouse/
-```
-
-### Common Issues and Solutions
-
-1. **SQL Server "unhealthy" status**: 
-   - Wait longer for initialization (can take 60+ seconds)
-   - Check that init script ran successfully
-
-2. **ETL fails with type errors**:
-   - Pandas warnings about DBAPI2 connections are normal
-   - Check for schema mismatches in source data
-
-3. **Nessie REST catalog not available**:
-   - This is expected behavior - the demo uses filesystem fallback
-   - For production, properly configure Nessie with warehouse settings
-
-4. **Permission Issues**
-```bash
-# Ensure data directory has proper permissions
-chmod -R 777 data/
-```
-
-5. **Container build failures**:
-```bash
-# Clean rebuild all containers
-docker-compose down --rmi all -v
-docker-compose build --no-cache
-docker-compose up -d
 ```
 
 ## Cleanup
@@ -402,43 +370,34 @@ rm -rf data/
 docker-compose down --rmi all -v
 ```
 
-## Demo Results Summary
+## 🎯 Demo Results Summary
 
-After completing all steps, you will have demonstrated:
+After completing the demo, you will have:
 
-### ✅ **Bidirectional Data Flow**
-- **18,500 rows** migrated from SQL Server to Iceberg format
-- Full round-trip capability with backload to target SQL Server
-- Zero precision loss through Apache Arrow type system
+### ✅ **Enterprise Architecture**
+- **Source-built MinIO** from UBI8 with zero external dependencies
+- **S3-compatible storage** for cloud-ready deployment
+- **Interactive dashboard** for operations and monitoring
 
-### ✅ **Production-Ready Features**  
-- **Partitioned tables** with optimized query performance
-- **Type fidelity** across complex SQL Server data types (DECIMAL, DATETIME2, MONEY, NVARCHAR, VARBINARY)
-- **Schema preservation** with automatic Arrow-to-Iceberg conversion
-- **Filesystem storage** ready for S3 migration
+### ✅ **Data Pipeline**
+- **18,500 rows** migrated with zero precision loss
+- **Bidirectional flow** between SQL Server and Iceberg
+- **Partitioned tables** optimized for analytics
 
-### ✅ **Architecture Validation**
-- **Intermediate storage layer** proven for reporting data
-- **Cross-environment data sync** capabilities
-- **Schema evolution support** foundation laid
-- **Disaster recovery** patterns established
-
-### ✅ **Technical Implementation**
-- Docker-based deployment with health checks
-- PyIceberg 0.6.1 with latest partitioning API
-- SQL Server 2022 with proper sqlcmd tooling
-- Nessie integration path prepared (filesystem fallback working)
+### ✅ **Production Features**
+- **Type preservation** across complex SQL types
+- **Schema evolution** support via Nessie
+- **Health monitoring** and automatic initialization
+- **Web-based controls** for non-technical users
 
 ## Next Steps
 
 This demo provides a foundation for:
-- Building a data lakehouse architecture with Iceberg
-- Implementing CDC (Change Data Capture) pipelines  
-- Creating cross-environment data synchronization
+- Building a data lakehouse architecture
+- Implementing CDC (Change Data Capture) pipelines
+- Migrating to cloud storage (AWS S3, Azure ADLS, Google GCS)
 - Establishing disaster recovery procedures
-- Enabling analytical workloads on operational data
-- Migrating to cloud-native storage (S3/ADLS/GCS)
-- Implementing proper Nessie REST catalog for versioning
+- Scaling to production workloads
 
 ## License
 

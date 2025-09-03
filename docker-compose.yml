@@ -109,6 +109,43 @@ services:
       - iceberg-network
     command: tail -f /dev/null  # Keep container running for manual execution
 
+  dashboard:
+    build: ./dashboard
+    container_name: iceberg-dashboard
+    depends_on:
+      mssql:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - MSSQL_HOST=mssql
+      - MSSQL_PORT=1433
+      - MSSQL_USER=sa
+      - MSSQL_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - NESSIE_URI=http://nessie:19120
+      - WAREHOUSE_PATH=s3://warehouse/
+      # MinIO S3 configuration
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      - AWS_ENDPOINT_URL=http://minio:9000
+      - AWS_REGION=us-east-1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./dashboard:/app
+      - ./pyiceberg-etl:/app/etl_modules
+    networks:
+      - iceberg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 networks:
   iceberg-network:
     driver: bridge
