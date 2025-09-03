@@ -1,6 +1,6 @@
-pyiceberg[pyarrow]==0.6.1
+pyiceberg[pyarrow,s3fs]==0.9.1
 pymssql==2.2.11
-pyarrow==15.0.0
+pyarrow>=15.0.0
 pandas==2.2.0
 sqlalchemy==2.0.25
 python-dotenv==1.0.0

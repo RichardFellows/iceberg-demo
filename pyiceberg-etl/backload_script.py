@@ -40,8 +40,8 @@ class IcebergToSQLServerBackload:
             'database': target_database
         }
         
-        self.warehouse_path = os.getenv('WAREHOUSE_PATH', '/data/warehouse')
-        self.nessie_uri = os.getenv('NESSIE_URI', 'http://localhost:19120/api/v1')
+        self.warehouse_path = os.getenv('WAREHOUSE_PATH', 's3://warehouse/')
+        self.nessie_uri = os.getenv('NESSIE_URI', 'http://nessie:19120/iceberg')
         
         self.catalog = None
         self.mssql_conn = None
@@ -59,6 +59,7 @@ class IcebergToSQLServerBackload:
         """Initialize Iceberg catalog (filesystem with Nessie integration path)."""
         try:
             # Try Nessie REST first, fallback to filesystem for demo reliability
+            # Note: Native Nessie catalog is not available in PyIceberg 0.6.1
             try:
                 catalog_config = {
                     'type': 'rest',
@@ -75,7 +76,7 @@ class IcebergToSQLServerBackload:
                 }
                 self.catalog = load_catalog('demo_catalog', **catalog_config)
                 logger.info(f"Successfully initialized filesystem catalog at {self.warehouse_path}")
-                logger.info("Note: Using filesystem catalog. For production with versioning, configure Nessie REST properly.")
+                logger.info("Note: Using filesystem catalog. Native Nessie support not available in PyIceberg 0.6.1")
                 
         except Exception as e:
             logger.error(f"Failed to initialize Iceberg catalog: {e}")

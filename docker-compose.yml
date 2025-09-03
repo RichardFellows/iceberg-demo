@@ -23,27 +23,58 @@ services:
       start_period: 90s
 
   nessie:
-    image: projectnessie/nessie:latest
+    image: ghcr.io/projectnessie/nessie:latest
     container_name: iceberg-nessie
+    depends_on:
+      minio:
+        condition: service_healthy
     ports:
       - "19120:19120"
     environment:
-      - NESSIE_VERSION_STORE_TYPE=in-memory
+      - NESSIE_VERSION_STORE_TYPE=IN_MEMORY
       - QUARKUS_HTTP_PORT=19120
-      - NESSIE_URI=http://nessie:19120/api/v1
-      # Iceberg REST Catalog configuration
-      - NESSIE_CATALOG_DEFAULT-WAREHOUSE=warehouse
-      - NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION=file:///data/warehouse
-      - NESSIE_CATALOG_ICEBERG_ENABLED=true
+      - NESSIE_SERVER_AUTHENTICATION_ENABLED=false
+      # Nessie REST Catalog configuration for Iceberg with S3
+      - NESSIE_CATALOG_DEFAULT_WAREHOUSE=warehouse
+      - NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION=s3://warehouse/
+      # Configure Nessie S3 settings for MinIO with secrets
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ENDPOINT=http://minio:9000
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_REGION=us-east-1  
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_PATH_STYLE_ACCESS=true
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_AUTH_TYPE=STATIC
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY_ID=minioadmin
+      - NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_SECRET_ACCESS_KEY=minioadmin123
     volumes:
       - ./data/nessie:/nessie/data
-      - ./data/warehouse:/data/warehouse
     networks:
       - iceberg-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/trees"]
       interval: 10s
       timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  minio:
+    build: ./minio
+    container_name: iceberg-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+      - MINIO_DOMAIN=minio
+      - MINIO_REGION_NAME=us-east-1
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - iceberg-network
+    command: ["server", "/data", "--console-address", ":9001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 20s
       retries: 5
       start_period: 20s
 
@@ -55,14 +86,22 @@ services:
         condition: service_healthy
       nessie:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       - MSSQL_HOST=mssql
       - MSSQL_PORT=1433
       - MSSQL_USER=sa
       - MSSQL_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
-      - NESSIE_URI=http://nessie:19120/api/v1
-      - WAREHOUSE_PATH=/data/warehouse
+      - NESSIE_URI=http://nessie:19120/iceberg
+      - WAREHOUSE_PATH=s3://warehouse/
       - PYTHONUNBUFFERED=1
+      # MinIO S3 configuration
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      - AWS_ENDPOINT_URL=http://minio:9000
+      - AWS_REGION=us-east-1
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
     volumes:
       - ./data/warehouse:/data/warehouse
       - ./pyiceberg-etl:/app

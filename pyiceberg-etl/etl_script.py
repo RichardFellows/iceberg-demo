@@ -44,8 +44,8 @@ class SQLServerToIcebergETL:
             'database': 'IcebergDemoSource'
         }
         
-        self.warehouse_path = os.getenv('WAREHOUSE_PATH', '/data/warehouse')
-        self.nessie_uri = os.getenv('NESSIE_URI', 'http://nessie:19120/iceberg/main/')
+        self.warehouse_path = os.getenv('WAREHOUSE_PATH', 's3://warehouse/')
+        self.nessie_uri = os.getenv('NESSIE_URI', 'http://nessie:19120/iceberg')
         
         self.catalog = None
         self.mssql_conn = None
@@ -63,10 +63,17 @@ class SQLServerToIcebergETL:
         """Initialize Iceberg catalog (filesystem with Nessie integration path)."""
         try:
             # Try Nessie REST first, fallback to filesystem for demo reliability
+            # Note: Native Nessie catalog is not available in PyIceberg 0.6.1
             try:
                 catalog_config = {
                     'type': 'rest',
                     'uri': self.nessie_uri,
+                    # S3 configuration for MinIO
+                    's3.endpoint': os.getenv('AWS_ENDPOINT_URL', 'http://minio:9000'),
+                    's3.access-key-id': os.getenv('AWS_ACCESS_KEY_ID', 'minioadmin'),
+                    's3.secret-access-key': os.getenv('AWS_SECRET_ACCESS_KEY', 'minioadmin123'),
+                    's3.path-style-access': 'true',
+                    's3.region': os.getenv('AWS_REGION', 'us-east-1'),
                 }
                 self.catalog = load_catalog('nessie_rest', **catalog_config)
                 logger.info(f"Successfully initialized Nessie REST catalog at {self.nessie_uri}")
@@ -79,7 +86,7 @@ class SQLServerToIcebergETL:
                 }
                 self.catalog = load_catalog('demo_catalog', **catalog_config)
                 logger.info(f"Successfully initialized filesystem catalog at {self.warehouse_path}")
-                logger.info("Note: Using filesystem catalog. For production with versioning, configure Nessie REST properly.")
+                logger.info("Note: Using filesystem catalog. Nessie REST catalog doesn't support file:// scheme")
             
             # Create namespace if it doesn't exist
             try:
@@ -234,11 +241,17 @@ class SQLServerToIcebergETL:
             except:
                 pass  # Table doesn't exist
             
+            # Create S3-compatible table location
+            if self.warehouse_path.startswith('s3://'):
+                table_location = f"{self.warehouse_path.rstrip('/')}/{namespace}/{table_name}"
+            else:
+                table_location = f"{self.warehouse_path}/{namespace}/{table_name}"
+                
             table = self.catalog.create_table(
                 identifier=full_table_name,
                 schema=iceberg_schema,
                 partition_spec=partition_spec,
-                location=f"{self.warehouse_path}/{namespace}/{table_name}"
+                location=table_location
             )
             logger.info(f"Created Iceberg table {full_table_name}")
             return table
@@ -286,7 +299,27 @@ class SQLServerToIcebergETL:
             arrow_table = self.read_sql_table_to_arrow(schema, table_name)
             
             # Create Iceberg table
-            iceberg_table = self.create_iceberg_table(table_name, arrow_table, partition_by)
+            try:
+                iceberg_table = self.create_iceberg_table(table_name, arrow_table, partition_by)
+            except Exception as e:
+                if "file://" in str(e) and "scheme" in str(e):
+                    logger.warning(f"Nessie REST catalog doesn't support file:// scheme, falling back to filesystem catalog")
+                    # Switch to filesystem catalog for this operation
+                    original_catalog = self.catalog
+                    catalog_config = {
+                        'uri': 'sqlite:////tmp/pyiceberg_catalog.db',
+                        'warehouse': f'file://{self.warehouse_path}',
+                    }
+                    self.catalog = load_catalog('demo_catalog_fallback', **catalog_config)
+                    # Ensure namespace exists
+                    try:
+                        self.catalog.create_namespace('sales')
+                    except:
+                        pass  # Namespace might already exist
+                    # Try creating table again with filesystem catalog
+                    iceberg_table = self.create_iceberg_table(table_name, arrow_table, partition_by)
+                else:
+                    raise
             
             # Write data to Iceberg
             self.write_to_iceberg(iceberg_table, arrow_table)
