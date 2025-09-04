@@ -33,8 +33,9 @@ export default defineConfig({
   ],
 
   // Global setup and teardown
-  globalSetup: './tests/global-setup.ts',
-  globalTeardown: './tests/global-teardown.ts',
+  // Only use local setup if not in CI (CI handles Docker separately)
+  globalSetup: process.env.CI ? undefined : './tests/global-setup.ts',
+  globalTeardown: process.env.CI ? undefined : './tests/global-teardown.ts',
 
   // Timeouts
   timeout: 120000, // 2 minutes per test (ETL operations can be slow)
@@ -42,13 +43,13 @@ export default defineConfig({
     timeout: 30000, // 30 seconds for assertions
   },
 
-  // Web server configuration
-  webServer: [
+  // Web server configuration - disabled in CI as services are managed by workflow
+  webServer: process.env.CI ? undefined : [
     {
       command: 'docker-compose up -d --build',
       port: 8000,
       timeout: 180000, // 3 minutes to start all services
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       env: {
         COMPOSE_FILE: process.env.TEST_MODE === 'filesystem' 
           ? 'docker-compose-filesystem.yml' 

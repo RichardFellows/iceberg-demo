@@ -47,13 +47,38 @@ jobs:
         run: |
           docker-compose up -d --build
           echo "Waiting for services to be healthy..."
-          sleep 60
+          
+          # Wait for SQL Server to be healthy
+          for i in {1..30}; do
+            if docker-compose ps | grep -q "healthy"; then
+              echo "Services are healthy"
+              break
+            fi
+            echo "Waiting for services... ($i/30)"
+            sleep 5
+          done
+          
           docker-compose ps
+      
+      - name: Check dashboard accessibility
+        working-directory: ./tests
+        run: |
+          echo "Checking if dashboard is accessible..."
+          curl -f http://localhost:8000 || echo "Dashboard not responding"
+          curl -f http://localhost:8000/api/status || echo "API not responding"
+      
+      - name: Run health check tests
+        working-directory: ./tests
+        env:
+          TEST_MODE: full
+          CI: true
+        run: npx playwright test tests/health-check.spec.ts --reporter=list
       
       - name: Run Playwright tests - Full Version
         working-directory: ./tests
         env:
           TEST_MODE: full
+          CI: true
         run: npx playwright test tests/dashboard-full.spec.ts --reporter=github,html
       
       - name: Upload test report
@@ -110,13 +135,37 @@ jobs:
         run: |
           docker-compose -f docker-compose-filesystem.yml up -d --build
           echo "Waiting for services to be healthy..."
-          sleep 45
+          
+          # Wait for SQL Server to be healthy
+          for i in {1..30}; do
+            if docker-compose -f docker-compose-filesystem.yml ps | grep -q "healthy"; then
+              echo "Services are healthy"
+              break
+            fi
+            echo "Waiting for services... ($i/30)"
+            sleep 5
+          done
+          
           docker-compose -f docker-compose-filesystem.yml ps
+      
+      - name: Check dashboard accessibility
+        run: |
+          echo "Checking if dashboard is accessible..."
+          curl -f http://localhost:8000 || echo "Dashboard not responding"
+          curl -f http://localhost:8000/api/status || echo "API not responding"
+      
+      - name: Run health check tests
+        working-directory: ./tests
+        env:
+          TEST_MODE: filesystem
+          CI: true
+        run: npx playwright test tests/health-check.spec.ts --reporter=list
       
       - name: Run Playwright tests - Filesystem Version
         working-directory: ./tests
         env:
           TEST_MODE: filesystem
+          CI: true
         run: npx playwright test tests/dashboard-filesystem.spec.ts --reporter=github,html
       
       - name: Upload test report
