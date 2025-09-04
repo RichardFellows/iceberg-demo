@@ -45,27 +45,58 @@ jobs:
       
       - name: Start services
         run: |
-          docker-compose up -d --build
-          echo "Waiting for services to be healthy..."
+          # Use CI-optimized compose file with prebuilt images
+          docker-compose -f docker-compose-ci.yml up -d
           
-          # Wait for SQL Server to be healthy
-          for i in {1..30}; do
-            if docker-compose ps | grep -q "healthy"; then
-              echo "Services are healthy"
+          echo "Waiting for services to start..."
+          sleep 15
+          
+          # Check service status
+          docker-compose -f docker-compose-ci.yml ps
+          
+          # Wait for SQL Server specifically (most critical service)
+          echo "Waiting for SQL Server to be ready..."
+          for i in {1..40}; do
+            if docker exec iceberg-mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Strong@Password123' -Q "SELECT 1" -C 2>/dev/null; then
+              echo "SQL Server is ready!"
               break
             fi
-            echo "Waiting for services... ($i/30)"
+            echo "Waiting for SQL Server... ($i/40)"
             sleep 5
           done
           
-          docker-compose ps
+          # Wait for dashboard to be ready
+          echo "Waiting for dashboard to be ready..."
+          for i in {1..20}; do
+            if docker exec iceberg-dashboard curl -f http://localhost:8000/api/status 2>/dev/null; then
+              echo "Dashboard is ready!"
+              break
+            fi
+            echo "Waiting for dashboard... ($i/20)"
+            sleep 5
+          done
+          
+          # Final status check with logs if needed
+          docker-compose -f docker-compose-ci.yml ps
+          if ! docker-compose -f docker-compose-ci.yml ps | grep -q "Up"; then
+            echo "Some services failed to start. Showing logs:"
+            docker-compose -f docker-compose-ci.yml logs
+          fi
       
       - name: Check dashboard accessibility
-        working-directory: ./tests
         run: |
           echo "Checking if dashboard is accessible..."
-          curl -f http://localhost:8000 || echo "Dashboard not responding"
-          curl -f http://localhost:8000/api/status || echo "API not responding"
+          for i in {1..30}; do
+            if curl -f http://localhost:8000 2>/dev/null; then
+              echo "Dashboard is accessible!"
+              break
+            fi
+            echo "Waiting for dashboard... ($i/30)"
+            sleep 2
+          done
+          
+          # Check API
+          curl -f http://localhost:8000/api/status || echo "Warning: API not responding yet"
       
       - name: Run health check tests
         working-directory: ./tests
@@ -99,7 +130,7 @@ jobs:
       
       - name: Stop services
         if: always()
-        run: docker-compose down -v
+        run: docker-compose -f docker-compose-ci.yml down -v
 
   test-filesystem-version:
     name: Test Filesystem Version (no MinIO/Nessie)
@@ -133,26 +164,48 @@ jobs:
       
       - name: Start filesystem services
         run: |
+          # Start filesystem services
           docker-compose -f docker-compose-filesystem.yml up -d --build
-          echo "Waiting for services to be healthy..."
           
-          # Wait for SQL Server to be healthy
-          for i in {1..30}; do
-            if docker-compose -f docker-compose-filesystem.yml ps | grep -q "healthy"; then
-              echo "Services are healthy"
+          echo "Waiting for services to start..."
+          sleep 10
+          
+          # Check service status
+          docker-compose -f docker-compose-filesystem.yml ps
+          
+          # Wait for SQL Server specifically
+          echo "Waiting for SQL Server to be ready..."
+          for i in {1..60}; do
+            if docker exec iceberg-mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Strong@Password123' -Q "SELECT 1" -C 2>/dev/null; then
+              echo "SQL Server is ready!"
               break
             fi
-            echo "Waiting for services... ($i/30)"
-            sleep 5
+            echo "Waiting for SQL Server... ($i/60)"
+            sleep 3
           done
           
+          # Give services time to stabilize
+          echo "Waiting for services to stabilize..."
+          sleep 15
+          
+          # Final status check
           docker-compose -f docker-compose-filesystem.yml ps
+          docker-compose -f docker-compose-filesystem.yml logs --tail=20
       
       - name: Check dashboard accessibility
         run: |
           echo "Checking if dashboard is accessible..."
-          curl -f http://localhost:8000 || echo "Dashboard not responding"
-          curl -f http://localhost:8000/api/status || echo "API not responding"
+          for i in {1..30}; do
+            if curl -f http://localhost:8000 2>/dev/null; then
+              echo "Dashboard is accessible!"
+              break
+            fi
+            echo "Waiting for dashboard... ($i/30)"
+            sleep 2
+          done
+          
+          # Check API
+          curl -f http://localhost:8000/api/status || echo "Warning: API not responding yet"
       
       - name: Run health check tests
         working-directory: ./tests
