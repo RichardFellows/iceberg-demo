@@ -1,0 +1,86 @@
+# Filesystem-only Docker Compose configuration for Apache Iceberg Demo
+# This version removes MinIO and Nessie dependencies, using local filesystem storage
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: iceberg-mssql
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d
+      - mssql-data:/var/opt/mssql
+    networks:
+      - iceberg-network
+    command: ["/docker-entrypoint-initdb.d/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${MSSQL_SA_PASSWORD:-Strong@Password123}", "-d", "IcebergDemoSource", "-Q", "SELECT COUNT(*) FROM sales.customers", "-C"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  pyiceberg-etl:
+    build: 
+      context: ./pyiceberg-etl
+      dockerfile: Dockerfile.filesystem
+    container_name: iceberg-etl-filesystem
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - MSSQL_HOST=mssql
+      - MSSQL_PORT=1433
+      - MSSQL_USER=sa
+      - MSSQL_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - WAREHOUSE_PATH=/data/warehouse
+      - PYTHONUNBUFFERED=1
+      - USE_FILESYSTEM=true
+    volumes:
+      - ./data/warehouse:/data/warehouse
+      - ./pyiceberg-etl:/app
+    networks:
+      - iceberg-network
+    command: tail -f /dev/null  # Keep container running for manual execution
+
+  dashboard:
+    build: 
+      context: ./dashboard
+      dockerfile: Dockerfile.filesystem
+    container_name: iceberg-dashboard-filesystem
+    depends_on:
+      mssql:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - MSSQL_HOST=mssql
+      - MSSQL_PORT=1433
+      - MSSQL_USER=sa
+      - MSSQL_PASSWORD=${MSSQL_SA_PASSWORD:-Strong@Password123}
+      - WAREHOUSE_PATH=/data/warehouse
+      - USE_FILESYSTEM=true
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./dashboard:/app
+      - ./pyiceberg-etl:/app/etl_modules
+      - ./data/warehouse:/data/warehouse
+    networks:
+      - iceberg-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  iceberg-network:
+    driver: bridge
+
+volumes:
+  mssql-data:

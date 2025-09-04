@@ -1,0 +1,8 @@
+pyiceberg[pyarrow,sql-sqlite]==0.9.1
+pymssql==2.2.11
+pyarrow>=15.0.0
+pandas==2.2.0
+sqlalchemy==2.0.25
+python-dotenv==1.0.0
+requests==2.31.0
+fsspec==2023.12.2
