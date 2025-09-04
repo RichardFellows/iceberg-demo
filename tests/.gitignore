@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Test results
+test-results/
+playwright-report/
+screenshots/
+
+# Compiled files
+dist/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+playwright/.cache/
+test-videos/
+traces/

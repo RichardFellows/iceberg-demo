@@ -1,0 +1,29 @@
+{
+  "name": "iceberg-demo-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for Apache Iceberg Demo dashboards",
+  "scripts": {
+    "test": "playwright test",
+    "test:full": "playwright test tests/dashboard-full.spec.ts",
+    "test:filesystem": "playwright test tests/dashboard-filesystem.spec.ts",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "test:ci": "playwright test --reporter=github,html",
+    "install": "playwright install --with-deps chromium"
+  },
+  "keywords": [
+    "testing",
+    "playwright",
+    "e2e",
+    "apache-iceberg"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}
